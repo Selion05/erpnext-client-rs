@@ -1,14 +1,12 @@
 # Erpnext Client
 
-A lightweight async Rust client for interacting with [ERPNext](https://erpnext.com/) via their API.
+An async Rust client for interacting with [ERPNext](https://erpnext.com/) via their API.
 
 Supports reading, inserting, and updating doctypes using basic authentication.
 
 ## Todo
 - search doctypes with filter
 ## 🚀 Usage
-
-Add to your `Cargo.toml`:
 
 ```rust
 use frappe_client::{Client, Settings};
