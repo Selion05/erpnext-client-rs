@@ -9,7 +9,7 @@ Supports reading, inserting, and updating doctypes using basic authentication.
 ## 🚀 Usage
 
 ```rust
-use frappe_client::{Client, Settings};
+use erpnext_client::{Client, Settings};
 use secrecy::SecretString;
 use serde::Deserialize;
 
