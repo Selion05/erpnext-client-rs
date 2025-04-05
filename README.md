@@ -1,0 +1,44 @@
+# Erpnext Client
+
+A lightweight async Rust client for interacting with [ERPNext](https://erpnext.com/) via their API.
+
+Supports reading, inserting, and updating doctypes using basic authentication.
+
+## Todo
+- search doctypes with filter
+## 🚀 Usage
+
+Add to your `Cargo.toml`:
+
+```rust
+use frappe_client::{Client, Settings};
+use secrecy::SecretString;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Customer {
+    name: String,
+    customer_name: String,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let settings = Settings {
+        url: "https://example.com".into(),
+        key: "your-api-key".into(),
+        secret: SecretString::new("your-secret-key".into()),
+    };
+
+    let client = Client::new(settings);
+
+    if let Some(customer) = client
+        .get_doctype_by_name::<Customer>("Customer", "CUST-0001")
+        .await?
+    {
+        println!("Customer: {:?}", customer);
+    }
+
+    Ok(())
+}
+
+```
