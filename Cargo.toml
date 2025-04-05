@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 description = "A simple API client for interacting with Frappe/ERPNext."
 license = "MIT"
-
-keywords = ["erp", "frappe", "api-client"]
+repository = "https://github.com/Selion05/erpnext-client-rs"
+keywords = ["erpnext", "api-client"]
 
 [dependencies]
 anyhow = "1.0.97"
