@@ -2,7 +2,7 @@ mod filter;
 
 use std::collections::HashMap;
 
-use anyhow::{Ok, Result, bail};
+use anyhow::{Result, bail};
 
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Serialize, de::DeserializeOwned};
@@ -28,8 +28,12 @@ impl Client {
         }
     }
     pub fn from_env() -> Result<Self> {
+        let url = std::env::var("ERPNEXT_URL")?;
+        if url.ends_with("/") {
+            bail!("url cannot end with a /");
+        }
         let s = Settings {
-            url: std::env::var("ERPNEXT_URL")?,
+            url,
             key: std::env::var("ERPNEXT_KEY")?,
             secret: std::env::var("ERPNEXT_SECRET")?.into(),
         };
@@ -55,7 +59,8 @@ impl Client {
             urlencoding::encode(doctype),
             urlencoding::encode(name)
         );
-        let response = self
+
+        let request = self
             .http
             .get(url)
             .basic_auth(
@@ -63,9 +68,9 @@ impl Client {
                 Some(self.settings.secret.expose_secret()),
             )
             .header("Accept", "application/json")
-            .send()
-            .await?;
+            .build()?;
 
+        let response = self.log_http_request(request).await?;
         let json: serde_json::Value = response.json().await?;
         if let Some(exc_type) = json.get("exc_type") {
             if exc_type == &serde_json::Value::String("DoesNotExistError".into()) {
@@ -113,7 +118,7 @@ impl Client {
             ],
         )?;
 
-        let response = self
+        let request = self
             .http
             .get(url)
             .basic_auth(
@@ -121,8 +126,9 @@ impl Client {
                 Some(self.settings.secret.expose_secret()),
             )
             .header("Accept", "application/json")
-            .send()
-            .await?;
+            .build()?;
+
+        let response = self.log_http_request(request).await?;
 
         let json: serde_json::Value = response.json().await?;
         if let Some(exception_value) = json.get("exception") {
@@ -133,7 +139,18 @@ impl Client {
             .get("data")
             .ok_or_else(|| anyhow::anyhow!("Missing 'data' field in response"))?;
 
-        let parsed_data: Vec<T> = serde_json::from_value(data.to_owned())?;
+        let parsed_data: Vec<T> = match serde_json::from_value(data.to_owned()) {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::error!(
+                    doctype = %doctype,
+                    data = %data,
+                    error = %e,
+                    "failed parsing data"
+                );
+                bail!("failed parsing data: {}", e);
+            }
+        };
 
         Ok(parsed_data)
     }
@@ -147,7 +164,7 @@ impl Client {
     ) -> Result<()> {
         let url = format!("{}/api/resource/{}/{}", self.settings.url, doctype, name);
         let wrapped = json!({"data":data});
-        let response = self
+        let request = self
             .http
             .put(url)
             .basic_auth(
@@ -157,8 +174,8 @@ impl Client {
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .json(&wrapped)
-            .send()
-            .await?;
+            .build()?;
+        let response = self.log_http_request(request).await?;
 
         let json: serde_json::Value = response.json().await?;
         if let Some(exception_value) = json.get("exception") {
@@ -176,7 +193,7 @@ impl Client {
     ) -> Result<()> {
         let wrapped = json!({"data":data});
         let url = format!("{}/api/resource/{}", self.settings.url, doctype);
-        let response = self
+        let request = self
             .http
             .post(url)
             .basic_auth(
@@ -186,8 +203,8 @@ impl Client {
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .json(&wrapped)
-            .send()
-            .await?;
+            .build()?;
+        let response = self.log_http_request(request).await?;
 
         let json: serde_json::Value = response.json().await?;
         if let Some(exception_value) = json.get("exception") {
@@ -195,6 +212,37 @@ impl Client {
         }
 
         Ok(())
+    }
+    async fn log_http_request(
+        &self,
+        request: reqwest::Request,
+    ) -> anyhow::Result<reqwest::Response> {
+        let start = std::time::Instant::now();
+        let uri = request.url().clone();
+        match self.http.execute(request).await {
+            Ok(resp) => {
+                let duration = start.elapsed();
+                let status = resp.status();
+                let size = resp.content_length().unwrap_or(0);
+                tracing::debug!(
+                    url = %uri,
+                    status = %status,
+                    content_length = size,
+                    duration = %duration.as_millis(),
+                    "HTTP request succeeded",
+                );
+                Ok(resp)
+            }
+            Err(e) => {
+                tracing::error!(
+                    "HTTP request to {} failed after {:?}: {}",
+                    uri,
+                    start.elapsed(),
+                    e
+                );
+                Err(e.into())
+            }
+        }
     }
 }
 

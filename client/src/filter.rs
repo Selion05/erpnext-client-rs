@@ -2,6 +2,8 @@
 pub enum Comparator {
     #[serde(rename = ">=")]
     GreaterEqual,
+    #[serde(rename = "<=")]
+    SmallerEqual,
     #[serde(rename = "=")]
     Equal,
     #[serde(rename = "not in")]
