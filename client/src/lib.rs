@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use anyhow::{Result, bail};
 
 use secrecy::{ExposeSecret, SecretString};
+use serde::Deserialize;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::json;
 
@@ -15,6 +16,10 @@ pub struct Client {
     http: reqwest::Client,
     settings: Settings,
 }
+
+// Only used if you do not care about the response
+#[derive(Debug, Deserialize)]
+struct Blank {}
 
 pub trait Fieldnames {
     fn field_names() -> &'static [&'static str];
@@ -191,6 +196,18 @@ impl Client {
         doctype: &str,
         data: &T,
     ) -> Result<()> {
+        let _data: Blank = self.insert_doctype_with_return(doctype, data).await?;
+        Ok(())
+    }
+    #[tracing::instrument(skip(self))]
+    pub async fn insert_doctype_with_return<
+        T: Serialize + std::fmt::Debug,
+        R: for<'de> Deserialize<'de>,
+    >(
+        &self,
+        doctype: &str,
+        data: &T,
+    ) -> Result<R> {
         let wrapped = json!({"data":data});
         let url = format!("{}/api/resource/{}", self.settings.url, doctype);
         let request = self
@@ -210,9 +227,13 @@ impl Client {
         if let Some(exception_value) = json.get("exception") {
             bail!("The response contains an exception: {}", exception_value);
         }
-
-        Ok(())
+        if let Some(data) = json.get("data") {
+            let parsed: R = serde_json::from_value(data.clone())?;
+            return Ok(parsed);
+        }
+        bail!("The response contains now data key");
     }
+
     async fn log_http_request(
         &self,
         request: reqwest::Request,
