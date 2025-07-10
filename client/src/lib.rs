@@ -3,7 +3,6 @@ mod filter;
 use std::collections::HashMap;
 
 use anyhow::{Result, bail};
-
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use serde::{Serialize, de::DeserializeOwned};
@@ -232,6 +231,58 @@ impl Client {
             return Ok(parsed);
         }
         bail!("The response contains now data key");
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn get_sales_pdf(
+        &self,
+        name: &str,
+        format: &str,
+        lang: &str,
+    ) -> anyhow::Result<bytes::Bytes> {
+        let params = [
+            ("doctype", "Sales Invoice"),
+            ("name", name),
+            ("format", format),
+            ("no_letterhead", "0"),
+            ("_lang", lang),
+        ];
+        let url = reqwest::Url::parse_with_params(
+            format!(
+                "{}/api/method/frappe.utils.print_format.download_pdf",
+                self.settings.url
+            )
+            .as_str(),
+            params,
+        )?;
+        let request = self
+            .http
+            .get(url)
+            .basic_auth(
+                &self.settings.key,
+                Some(self.settings.secret.expose_secret()),
+            )
+            .build()?;
+
+        let response = self.log_http_request(request).await?;
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+
+        let bytes = response.bytes().await?;
+
+        if content_type.starts_with("application/json") {
+            let json: serde_json::Value = serde_json::from_slice(&bytes)?;
+            if let Some(exception_value) = json.get("exception") {
+                bail!("PDF generation failed: {}", exception_value);
+            }
+        }
+
+        Ok(bytes)
     }
 
     async fn log_http_request(

@@ -1,6 +1,6 @@
 [package]
 name = "erpnext_client"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "A simple API client for interacting with Frappe/ERPNext."
 license = "MIT"
@@ -9,6 +9,7 @@ keywords = ["erpnext", "api-client"]
 
 [dependencies]
 anyhow = "1.0.97"
+bytes = "1.0"
 reqwest = { version = "0.12.15", features = ["json"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
 serde = { version = "1.0.219", features = ["derive"] }
