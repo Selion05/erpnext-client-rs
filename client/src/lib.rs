@@ -1,6 +1,5 @@
 mod filter;
 
-use std::collections::HashMap;
 
 use anyhow::{Result, bail};
 use secrecy::{ExposeSecret, SecretString};
@@ -11,6 +10,8 @@ use serde_json::json;
 pub use erpnext_client_macro::Fieldnames;
 pub use filter::Comparator;
 pub use filter::FilterValue;
+pub use filter::Filters;
+pub use filter::IntoFilterValue;
 pub struct Client {
     http: reqwest::Client,
     settings: Settings,
@@ -98,13 +99,14 @@ impl Client {
     pub async fn list_doctype<T: DeserializeOwned + std::fmt::Debug + Fieldnames>(
         &self,
         doctype: &str,
-        filters: HashMap<String, (Comparator, FilterValue)>,
+        filters: impl Into<filter::Filters>,
         page_size: Option<usize>,
         page_start: Option<usize>,
     ) -> Result<Vec<T>> {
         const DEFAULT_PAGE_SIZE: usize = 1000;
         const DEFAULT_PAGE_START: usize = 0;
         let fields = serde_json::to_string(T::field_names())?;
+        let filters = filters.into();
         let filters = serde_json::to_string(&filters)?;
         let url = reqwest::Url::parse_with_params(
             format!("{}/api/resource/{}", self.settings.url, doctype).as_str(),
