@@ -1,16 +1,22 @@
 [package]
 name = "erpnext_client"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 description = "A simple API client for interacting with Frappe/ERPNext."
 license = "MIT"
 repository = "https://github.com/Selion05/erpnext-client-rs"
 keywords = ["erpnext", "api-client"]
 
+[features]
+default = ["rustls-tls-webpki"]
+default-tls = ["reqwest/default-tls"]
+rustls-tls-webpki = ["reqwest/rustls-tls-webpki-roots"]
+rustls-tls-native = ["reqwest/rustls-tls-native-roots"]
+
 [dependencies]
 anyhow = "1.0.97"
 bytes = "1.0"
-reqwest = { version = "0.12.15", features = ["json"] }
+reqwest = { version = "0.12.15", default-features = false, features = ["json"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
