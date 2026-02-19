@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub enum Comparator {
     #[serde(rename = ">=")]
     GreaterEqual,
@@ -16,6 +16,7 @@ pub enum Comparator {
     In,
 }
 
+#[derive(Debug, Clone)]
 pub enum FilterValue {
     Str(String),
     VecStr(Vec<String>),
@@ -105,6 +106,7 @@ impl IntoFilterValue for Vec<&str> {
 }
 
 // Filters struct for building filter lists
+#[derive(Debug, Clone)]
 pub struct Filters {
     filters: Vec<(String, Comparator, FilterValue)>,
 }
@@ -170,7 +172,7 @@ impl serde::Serialize for Filters {
         S: serde::Serializer,
     {
         use serde::ser::SerializeSeq;
-        
+
         let mut seq = serializer.serialize_seq(Some(self.filters.len()))?;
         for (field, comparator, value) in &self.filters {
             seq.serialize_element(&(field, comparator, value))?;
