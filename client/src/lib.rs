@@ -5,6 +5,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+pub use reqwest;
+
 pub use erpnext_client_macro::Fieldnames;
 pub use filter::Comparator;
 pub use filter::FilterValue;
