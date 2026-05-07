@@ -1,6 +1,6 @@
 [package]
 name = "erpnext_client"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 description = "A simple API client for interacting with Frappe/ERPNext."
 license = "MIT"
@@ -23,3 +23,7 @@ tracing = "0.1.41"
 url = "2.5.7"
 erpnext_client_macro = { version = "0.1.0", path = "../macro" }
 urlencoding = "2.1.3"
+
+[dev-dependencies]
+httpmock = "0.8.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
