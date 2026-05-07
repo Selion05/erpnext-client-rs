@@ -4,6 +4,8 @@ An async Rust client for interacting with [ERPNext](https://erpnext.com/) via th
 
 Supports reading, inserting, and updating doctypes using basic authentication.
 
+Use `find_doctype_by_name()` when a missing document is an expected outcome.
+
 ## Todo
 - search doctypes with filter
 ## 🚀 Usage
@@ -30,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
     let client = Client::new(settings);
 
     if let Some(customer) = client
-        .get_doctype_by_name::<Customer>("Customer", "CUST-0001")
+        .find_doctype_by_name::<Customer>("Customer", "CUST-0001")
         .await?
     {
         println!("Customer: {:?}", customer);

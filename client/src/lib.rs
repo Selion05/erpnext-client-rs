@@ -224,7 +224,7 @@ impl Client {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_doctype_by_name<T: DeserializeOwned + std::fmt::Debug>(
+    pub async fn find_doctype_by_name<T: DeserializeOwned + std::fmt::Debug>(
         &self,
         doctype: &str,
         name: &str,
@@ -245,7 +245,7 @@ impl Client {
         let response = self.log_http_request(request).await?;
         let (status, json, body) = self.decode_json_response(response, doctype, None).await?;
 
-        if json.get("exc_type").and_then(serde_json::Value::as_str) == Some("DoesNotExistError") {
+        if Self::is_missing_doctype_response(status, &json) {
             return Ok(None);
         }
 
@@ -260,6 +260,15 @@ impl Client {
             })?;
 
         Ok(Some(parsed_data))
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn get_doctype_by_name<T: DeserializeOwned + std::fmt::Debug>(
+        &self,
+        doctype: &str,
+        name: &str,
+    ) -> Result<Option<T>> {
+        self.find_doctype_by_name(doctype, name).await
     }
 
     #[tracing::instrument(skip(self, request))]
@@ -570,6 +579,52 @@ impl Client {
         Ok(())
     }
 
+    fn is_missing_doctype_response(status: reqwest::StatusCode, json: &serde_json::Value) -> bool {
+        if json.get("exc_type").and_then(serde_json::Value::as_str) == Some("DoesNotExistError") {
+            return true;
+        }
+
+        if status != reqwest::StatusCode::NOT_FOUND {
+            return false;
+        }
+
+        Self::extract_server_messages(json)
+            .iter()
+            .any(|message| is_missing_message(message))
+            || json
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(is_missing_message)
+    }
+
+    fn extract_server_messages(json: &serde_json::Value) -> Vec<String> {
+        let Some(raw_messages) = json
+            .get("_server_messages")
+            .and_then(serde_json::Value::as_str)
+        else {
+            return Vec::new();
+        };
+
+        let Ok(messages) = serde_json::from_str::<Vec<String>>(raw_messages) else {
+            return Vec::new();
+        };
+
+        messages
+            .into_iter()
+            .map(|message| {
+                serde_json::from_str::<serde_json::Value>(&message)
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string)
+                    })
+                    .unwrap_or(message)
+            })
+            .collect()
+    }
+
     fn map_erpnext_exception(
         doctype: &str,
         parent: Option<&str>,
@@ -641,9 +696,103 @@ fn is_permission_exception(exception: &str) -> bool {
         || exception.contains("frappe.exceptions.PermissionError")
 }
 
+fn is_missing_message(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("nicht gefunden")
+        || lower.contains("not found")
+        || lower.contains("does not exist")
+}
+
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct Settings {
     pub url: String,
     pub key: String,
     pub secret: SecretString,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::Method::GET;
+    use httpmock::MockServer;
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    struct TestDoc {
+        name: String,
+    }
+
+    fn test_settings(url: String) -> Settings {
+        Settings {
+            url,
+            key: "key".to_string(),
+            secret: SecretString::new("secret".to_string().into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn find_doctype_by_name_returns_none_for_404_server_messages() {
+        let server = MockServer::start();
+        let _mock = server.mock(|when, then| {
+            when.method(GET).path("/api/resource/Lead/KID-12983");
+            then.status(404)
+                .header("content-type", "application/json")
+                .body(
+                    r#"{"_server_messages":"[\"{\\\"message\\\": \\\"Lead KID-12983 nicht gefunden\\\", \\\"title\\\": \\\"Nachricht\\\", \\\"indicator\\\": \\\"red\\\", \\\"raise_exception\\\": 1}\"]"}"#,
+                );
+        });
+
+        let client = Client::new(test_settings(server.base_url()));
+
+        let lead = client
+            .find_doctype_by_name::<TestDoc>("Lead", "KID-12983")
+            .await
+            .expect("lookup should succeed");
+
+        assert_eq!(lead, None);
+    }
+
+    #[tokio::test]
+    async fn get_doctype_by_name_delegates_to_find() {
+        let server = MockServer::start();
+        let _mock = server.mock(|when, then| {
+            when.method(GET).path("/api/resource/Customer/CUST-0001");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"data":{"name":"CUST-0001"}}"#);
+        });
+
+        let client = Client::new(test_settings(server.base_url()));
+
+        let customer = client
+            .get_doctype_by_name::<TestDoc>("Customer", "CUST-0001")
+            .await
+            .expect("lookup should succeed");
+
+        assert_eq!(
+            customer,
+            Some(TestDoc {
+                name: "CUST-0001".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn detects_missing_message_variants() {
+        assert!(is_missing_message("Lead KID-1 nicht gefunden"));
+        assert!(is_missing_message("Lead KID-1 not found"));
+        assert!(is_missing_message("Lead KID-1 does not exist"));
+        assert!(!is_missing_message("Permission denied"));
+    }
+
+    #[test]
+    fn extracts_nested_server_messages() {
+        let json = serde_json::json!({
+            "_server_messages": "[\"{\\\"message\\\":\\\"Lead KID-1 nicht gefunden\\\"}\"]"
+        });
+
+        assert_eq!(
+            Client::extract_server_messages(&json),
+            vec!["Lead KID-1 nicht gefunden".to_string()]
+        );
+    }
 }
